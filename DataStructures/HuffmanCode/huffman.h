@@ -1,0 +1,48 @@
+//Huffman Encoding
+//f1303703 5130379072 石嘉昊
+#ifndef _HUFFMAN_
+#define _HUFFMAN_
+
+#include "StanfordCPPLib/pqueue.h"
+#include "StanfordCPPLib/vector.h"
+#include "IOBitStream.h"
+#include <string>
+
+#define myeof -100000//a eof that is different from "EOF" that helps control my compression-file
+#define nfound -99999//when findLetter() can't find the letter(such as "100100" is not a letter but we use findLetter() to find it) then the function return this number 
+//here using -100000 & -99999, aiming to be different from the letters' number.
+class Huffman{
+private:
+	struct Tree{
+		int key;
+		int value;
+		bool full;
+		Tree *left, *right;
+	};
+	struct TreeTitle{
+		int key;
+		int value;
+	};
+	Vector <TreeTitle> TreeMap;//trees' key & value. using when print the header 
+	PriorityQueue <Tree*> Trees;//trees when building huffman tree
+	void buildTree();
+	void getPriorityQueue();//for both compression & decompression
+	void readFile(Ibitstream &ibs);	
+	void writeFile(Ibitstream &ibs, Obitstream &obs);
+	void writeHeader(Obitstream &obs);
+	string printTree(Tree *node, int key, string routine);//for compression
+	int findLetter(Tree *node, string routine);
+	bool readHeader(Ibitstream &ibs);//for decompression
+	void deleteNode(Tree *node);
+	
+public:
+	Huffman();
+	~Huffman();
+	void compression(Ibitstream &ibs, Obitstream &obs);
+	bool decompression(Ibitstream &ibs, Obitstream &obs);
+};
+
+#endif
+	
+	
+
