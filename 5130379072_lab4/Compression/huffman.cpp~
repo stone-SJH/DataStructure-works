@@ -1,0 +1,232 @@
+#include "huffman.h"
+#include <stdlib.h>
+#include <iostream>
+using namespace std;
+
+string itos(int n){
+	string str = "";
+	string result = "";
+	if (n < 0){
+		n *= -1;
+		result += "-";
+	}
+	if (n == 0){
+		result = "0";
+		return result;
+	}
+	while (n != 0){
+		str += n % 10 + 48;
+		n /= 10;
+	}
+	for (int i = 0; i < str.length(); i++){
+		result += str[str.length()-i-1];
+	}
+	return result;
+}
+int stoi(string str){
+	return strtol(str.c_str(),NULL,10);
+}
+Huffman :: Huffman(){};
+Huffman :: ~Huffman(){
+	if (!Trees.isEmpty()){
+		Tree *node = Trees.peek();
+		deleteNode(node);
+	}
+	Trees.clear();
+	TreeMap.clear();
+}
+void Huffman :: deleteNode(Tree *node){
+	if (!node){
+		deleteNode(node->left);
+		deleteNode(node->right);
+		delete(node);
+	}
+}//help deallocation
+void Huffman :: compression(Ibitstream &ibs, Obitstream &obs){
+	readFile(ibs);
+	getPriorityQueue();
+	buildTree();
+	ibs.rewind();
+	writeHeader(obs);
+	writeFile(ibs, obs);
+}
+void Huffman :: readFile(Ibitstream &ibs){
+	TreeMap.clear();
+	char *buffer = new char(1);//since read() function needs const char* so i have to use this instread of a char
+	TreeTitle elem;
+	while (!ibs.eof()){
+		ibs.read(buffer,1);//read a letter(1 byte)
+		if (!ibs.eof()){//here set TreeMap as a title to build Trees
+			int pos;
+			bool flag = false;
+			for (pos = 0; pos < TreeMap.size(); pos++){
+				if (TreeMap[pos].key == buffer[0]){
+					flag = true;
+					break;
+				}
+			}
+			if (flag) TreeMap[pos].value++;
+			else{
+				elem.key = buffer[0];
+				elem.value = 1;
+				TreeMap.add(elem);
+			}
+		}
+	}
+	elem.key = myeof;
+	elem.value = 1;
+	TreeMap.add(elem);
+	delete []buffer;
+}
+void Huffman :: getPriorityQueue(){
+	Trees.clear();
+	for (int i = 0; i < TreeMap.size(); i++){
+		Tree *elem = new Tree();
+		elem->key = TreeMap[i].key;
+		elem->value = TreeMap[i].value;
+		elem->full = true;
+		elem->left = NULL;
+		elem->right = NULL;
+		Trees.enqueue(elem, TreeMap[i].value);//add the tree into Trees
+	}
+}
+void Huffman :: buildTree(){//use the Trees to make the Huffman tree
+	Tree *new_elem;
+	Tree *left_elem;
+	Tree *right_elem;
+	int new_value;
+	while (!Trees.isEmpty()){
+		new_elem = new Tree();
+		left_elem = Trees.dequeue();
+		new_value = left_elem->value;
+		new_elem->left = left_elem;
+		if (!Trees.isEmpty()){
+			right_elem = Trees.dequeue();
+			new_value += right_elem->value;
+			new_elem->right = right_elem;
+		}
+		new_elem->value = new_value;
+		new_elem->full = false;
+		deleteNode(left_elem);
+		deleteNode(right_elem);
+		if (!Trees.isEmpty()) Trees.enqueue(new_elem,new_value);
+	}
+	Trees.enqueue(new_elem,new_value);
+}
+void Huffman :: writeHeader(Obitstream &obs){//write the header on my own style: key(letter)=value(priority); &(as an ending).
+	string output;
+	for(int i = 0; i < TreeMap.size(); i++){
+		output = itos(TreeMap[i].key) + "=" + itos(TreeMap[i].value) + ";";
+		obs.write(output.c_str(), output.length());
+	}
+	output = "&";
+	obs.write(output.c_str(),1);
+}
+string Huffman :: printTree(Tree *node, int key, string routine){//print 0/1 to a string,and then will use bitWrite() to put then into the stream
+	string result = "";
+	if (node != NULL){
+		if (node->left != NULL){
+			result = printTree(node->left, key, routine+"0");
+			if (result != "") return result;
+		}
+		if (node->full && node->key == key) return routine;
+		if (node->right != NULL){
+			result = printTree(node->right, key, routine+"1");
+			if (result != "") return result;
+		}
+	}
+	return result;	
+}
+void Huffman :: writeFile(Ibitstream &ibs, Obitstream &obs){
+	Tree *header;
+	char *buffer = new char(1);
+	string route;
+	while (!ibs.eof()){
+		ibs.read(buffer,1);
+		if (!ibs.eof()){
+			header = Trees.peek();
+			route = printTree(header, buffer[0], "");
+			for (int i = 0; i < route.length(); i++){
+				int c = (int)route[i] - 48;
+				obs.bitWrite(c);
+			}
+		}
+	}
+	header = Trees.peek();
+	route = printTree(header, myeof, "");
+	for (int i = 0; i < route.length(); i++){
+		int c = (int)route[i] - 48;
+		obs.bitWrite(c);
+	}
+}
+bool Huffman :: decompression(Ibitstream &ibs, Obitstream &obs){
+	Tree *header;
+	int read_bit;
+	int find_letter;
+	string read_bit_str;
+	//deal with the header
+	if (!readHeader(ibs)) return false;
+	getPriorityQueue();
+	//cout<<1<<endl;
+	buildTree();
+	//cout<<2<<endl;
+	//deal with the binary file
+	while (!ibs.eof()){
+		//cout<<3;
+		read_bit = ibs.bitRead();
+		read_bit_str += itos(read_bit);
+		header = Trees.peek();
+		//cout<<"search:"<<read_bit_str<<endl;
+		find_letter = findLetter(header,read_bit_str);
+		//cout<<find_letter<<" ";
+		if (find_letter != nfound){
+			//cout<<1<<"  "<<find_letter<<endl;
+			if (find_letter == myeof) return true;
+			read_bit_str = (char)find_letter;
+			obs.write(read_bit_str.c_str(),1);
+			read_bit_str = "";
+		}
+	}
+	return false;
+}
+bool Huffman :: readHeader(Ibitstream &ibs){//read the header into the TreeMap
+	TreeMap.clear();
+	string input = "";
+	TreeTitle elem;
+	char *buffer = new char(1);
+	while (!ibs.eof()){
+		ibs.read(buffer, 1);
+		if (!ibs.eof()){
+			if (buffer[0] == '='){
+				elem.key = stoi(input.c_str());			
+				input = "";
+			}
+			else if (buffer[0] == ';'){
+				elem.value = stoi(input.c_str());
+				TreeMap.add(elem);
+				input = "";
+			}
+			else if (buffer[0] == '&'){
+				return true;
+			}
+			else input += buffer[0];
+		}
+	}
+	return false;
+}
+int Huffman :: findLetter(Tree *node, string routine){//find a letter using 0/1string (such as "000111")
+
+	if (node != NULL){
+		int len = routine.length();
+		while (len > 0){
+			int now = (routine[routine.length() - len] == '0' ? 0 : 1);
+ 			if (now == 0) node = node->left;
+			else node = node->right;
+			len--;
+		}
+		if (node->full) return node->key;
+		else return nfound;
+	}
+	else return nfound;	
+}
+			
